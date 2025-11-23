@@ -1,5 +1,5 @@
 {
-  "name": "topg-discord-bot-XPG",
+  "name": "topg-discord-bot-xpg",
   "version": "1.0.0",
   "description": "A Node.js bot to track TopG votes using webhooks and send notifications to Discord.",
   "main": "server.js",
