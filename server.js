@@ -1,12 +1,13 @@
 /**
- * Express Node.js application for TopG vote tracking.
- * Mechanism: Polling/Scraping the TopG page every 5 minutes.
+ * Express Node.js application for TopG vote tracking using Webhooks (Instant Notification).
+ * Mechanism: It receives an instant notification (Webhook) from TopG when a vote occurs.
  */
 const express = require('express');
 const axios = require('axios');
-const cron = require('node-cron');
+// Cron is removed as we are no longer polling
 const app = express();
 
+// Middleware to parse incoming request bodies (essential for Webhooks)
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -16,14 +17,14 @@ app.use(express.urlencoded({ extended: true }));
 
 // Discord Webhook URL (must be set as an environment variable)
 const DISCORD_WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL;
-// TopG server link for scraping (Updated to 671797 as per your input)
+// TopG server link
 const SERVER_LINK = "https://topg.org/cs-servers/server-671797"; 
 
-// Server owner name used in the notification message (Updated to XPG)
+// Server owner name
 const SERVER_OWNER_NAME = "XPG";
 
 // Variable to store the last known vote count (Score)
-let lastKnownTotalVotes = 0;
+let lastKnownTotalVotes = 0; 
 
 // =========================================================
 //                   Discord Webhook Functions
@@ -37,27 +38,28 @@ async function sendStartupMessage() {
 
     try {
         console.log("Sending Startup Message to Discord...");
+        await fetchInitialScore(); 
+
         await axios.post(DISCORD_WEBHOOK_URL, {
             embeds: [
                 {
-                    // Updated title with [XPG]
-                    title: "🟢 [XPG] Bot is Online & Ready!",
-                    description: "The TopG vote tracking system is now active. Checking for new votes every 5 minutes.",
-                    color: 5763719, // Green color
+                    title: "🟢 [XPG] Bot is Online & Ready! (Webhook Mode)",
+                    description: "The TopG vote tracking system is now active. **Waiting for instant Webhook notifications.**",
+                    color: 5763719,
                     fields: [
                         {
                             name: "🌍 Server Status",
-                            value: "Polling TopG score...",
+                            value: `Initialized with score: ${lastKnownTotalVotes}`,
                             inline: true
                         },
                         {
-                            name: "🔗 Check Link",
-                            value: `[TopG Server Page](${SERVER_LINK})`,
+                            name: "🔗 Webhook Endpoint",
+                            value: "/vote",
                             inline: true
                         },
                         {
-                            name: "⚠️ Reliability Note",
-                            value: "Votes may be delayed up to 5 minutes. Total votes lost on server restart.",
+                            name: "📌 Reliability Note",
+                            value: "Notifications are instant, relying on TopG Postback. Score is volatile (stored in RAM).",
                             inline: false
                         }
                     ],
@@ -74,16 +76,16 @@ async function sendStartupMessage() {
     }
 }
 
-async function sendNewVoteNotification(currentTotalVotes) {
+async function sendNewVoteNotification(currentTotalVotes, voterName = "Unknown Member") {
     if (!DISCORD_WEBHOOK_URL) return;
 
     try {
-        console.log(`Sending new vote notification. New total: ${currentTotalVotes}.`);
+        console.log(`Sending new vote notification. New total: ${currentTotalVotes}. Voter: ${voterName}`);
         await axios.post(DISCORD_WEBHOOK_URL, {
             embeds: [
                 {
-                    title: `🌟 New Vote Received! (Score: ${currentTotalVotes}) 🗳️`,
-                    description: `${SERVER_OWNER_NAME} thanks a valued XPlayGaming member for voting on TopG! 🎉 ✨`, 
+                    title: `🌟 New Vote from ${voterName}! (Score: ${currentTotalVotes}) 🗳️`,
+                    description: `${SERVER_OWNER_NAME} thanks **${voterName}** for supporting the server via TopG! 🎉 ✨`, 
                     color: 3447003,
                     fields: [
                         { name: "Total Score", value: `**${currentTotalVotes}**`, inline: true },
@@ -104,6 +106,40 @@ async function sendNewVoteNotification(currentTotalVotes) {
     }
 }
 
+// =========================================================
+//                   Score Scraping Function (For Initialization Only)
+// =========================================================
+
+function extractScoreFromHtml(html) {
+    const searchString = "Score";
+    const startIndex = html.indexOf(searchString);
+
+    if (startIndex !== -1) {
+        const snippet = html.substring(startIndex, startIndex + 100);
+        const scoreMatch = snippet.match(/(\d+)/); 
+        if (scoreMatch && scoreMatch[1]) {
+            return parseInt(scoreMatch[1], 10);
+        }
+    }
+    return 0;
+}
+
+async function fetchInitialScore() {
+    try {
+        const response = await axios.get(SERVER_LINK);
+        const html = response.data;
+        const initialScore = extractScoreFromHtml(html);
+        if (initialScore > 0) {
+            lastKnownTotalVotes = initialScore;
+            console.log(`[Initialization] Initial score set to ${initialScore}.`);
+        } else {
+            console.warn("[Initialization] Could not fetch initial score, starting from 0.");
+        }
+    } catch (error) {
+        console.error("[Initialization] Error fetching initial score:", error.message);
+    }
+}
+
 
 // =========================================================
 //                         Express Routes
@@ -111,98 +147,72 @@ async function sendNewVoteNotification(currentTotalVotes) {
 
 // Main route (Health Check)
 app.get('/', (req, res) => {
-    res.status(200).send(`Server is Running. Last known score: ${lastKnownTotalVotes}`);
+    res.status(200).send(`Server is Running (Webhook Mode). Last known score: ${lastKnownTotalVotes}`);
 });
 
-// =========================================================
-//                   Polling Functions
-// =========================================================
-
 /**
- * Function to scrape and extract the Score from TopG's HTML content.
- * It searches for the number that immediately follows the word "Score".
+ * Webhook Endpoint: This route is called INSTANTLY by TopG when a vote occurs.
  */
-function extractScoreFromHtml(html) {
-    const searchString = "Score";
-    const startIndex = html.indexOf(searchString);
+app.post('/vote', async (req, res) => {
+    console.log("=================================================");
+    console.log(`🎉 Webhook Received at ${new Date().toLocaleTimeString()}!`);
+    
+    // Attempt to extract the voter's name from the request body
+    // The name 'username' is commonly used by listing sites.
+    const voterName = req.body.username || req.body.voter_name || req.body.id || "Unknown Member"; 
+    console.log(`Request Body Data: ${JSON.stringify(req.body)}`); // Logs the raw data for debugging
 
-    if (startIndex !== -1) {
-        // Take a large snippet after 'Score' to look for the number
-        const snippet = html.substring(startIndex, startIndex + 100);
-        
-        // Flexible Regex to find the first integer (\d+) after 'Score', ignoring HTML tags and spaces
-        const scoreMatch = snippet.match(/(\d+)/); 
-
-        if (scoreMatch && scoreMatch[1]) {
-            const score = parseInt(scoreMatch[1], 10);
-            console.log(`[Scraping] Successfully extracted score: ${score}`);
-            return score;
-        }
-    }
-    console.warn("[Scraping] Could not find the Score number in the HTML content.");
-    return 0;
-}
-
-/**
- * TopG check function: runs periodically every 5 minutes.
- */
-async function checkTopGVotes() {
-    console.log(`--- Running TopG poll job at ${new Date().toLocaleTimeString()} ---`);
     let currentScore = 0;
-
     try {
-        // 1. Fetch HTML content
+        // Scrape the score instantly after receiving the Webhook to verify the count.
         const response = await axios.get(SERVER_LINK);
         const html = response.data;
-        
-        // 2. Extract Score
         currentScore = extractScoreFromHtml(html);
 
-        if (currentScore > 0) {
-            // Initial run: set score, no notification
-            if (lastKnownTotalVotes === 0) {
-                lastKnownTotalVotes = currentScore;
-                console.log(`[Polling] Initial score set to ${currentScore}. No notification sent.`);
-                return;
+        if (currentScore > 0 && currentScore > lastKnownTotalVotes) {
+            const newVotes = currentScore - lastKnownTotalVotes;
+            console.log(`New votes detected! Count: ${newVotes}. Current score: ${currentScore}. Voter: ${voterName}`);
+            
+            for (let i = 0; i < newVotes; i++) {
+                await sendNewVoteNotification(currentScore, voterName); // Pass the extracted name
             }
 
-            // 3. Compare new score with last known score
-            if (currentScore > lastKnownTotalVotes) {
-                const newVotes = currentScore - lastKnownTotalVotes;
-                console.log(`🎉 New votes detected! Count: ${newVotes}.`);
-                
-                // Send notification for each new vote
-                for (let i = 0; i < newVotes; i++) {
-                    await sendNewVoteNotification(currentScore);
-                }
+            lastKnownTotalVotes = currentScore;
+            res.status(200).send("Vote Processed & Notification Sent.");
 
-                // 4. Update last known score
-                lastKnownTotalVotes = currentScore;
-            } else if (currentScore < lastKnownTotalVotes) {
-                // Monthly reset or server reset
-                console.warn(`[Polling] Score decreased (from ${lastKnownTotalVotes} to ${currentScore}). Resetting last known score.`);
-                lastKnownTotalVotes = currentScore;
+        } else if (currentScore <= lastKnownTotalVotes) {
+            // Retry logic (TopG score might update slightly slower than the Webhook is sent)
+            console.warn(`Webhook received, but score (${currentScore}) has not increased yet. Retrying in 1.5 seconds...`);
+            
+            await new Promise(resolve => setTimeout(resolve, 1500)); 
+
+            const retryResponse = await axios.get(SERVER_LINK);
+            const retryHtml = retryResponse.data;
+            const retryScore = extractScoreFromHtml(retryHtml);
+
+            if (retryScore > lastKnownTotalVotes) {
+                 const newVotes = retryScore - lastKnownTotalVotes;
+                 console.log(`Retry successful! New votes: ${newVotes}. Score: ${retryScore}. Voter: ${voterName}`);
+                 for (let i = 0; i < newVotes; i++) {
+                    await sendNewVoteNotification(retryScore, voterName);
+                 }
+                 lastKnownTotalVotes = retryScore;
+                 res.status(200).send("Vote Processed after Retry & Notification Sent.");
             } else {
-                console.log("[Polling] No new votes detected. Score unchanged.");
+                 console.error("❌ Score did not increase even after retry. Possible duplicate/error.");
+                 res.status(200).send("Vote received, but score unchanged.");
             }
         } else {
-            console.error("❌ Failed to extract score from TopG page HTML. Scraping logic may be broken or score is 0.");
+            console.error("❌ Score could not be extracted.");
+            res.status(400).send("Error processing vote.");
         }
 
     } catch (error) {
-        console.error("❌ Error during TopG polling:", error.message);
+        console.error("❌ Error processing webhook:", error.message);
+        res.status(500).send("Internal Server Error.");
     }
-}
-
-// =========================================================
-//                         Cron Job Scheduling
-// =========================================================
-
-// Schedule: Check TopG page every 5 minutes ('*/5 * * * *')
-cron.schedule('*/5 * * * *', checkTopGVotes, {
-    timezone: "UTC"
+    console.log("=================================================");
 });
-
 
 // =========================================================
 //                   Server Startup
@@ -210,12 +220,52 @@ cron.schedule('*/5 * * * *', checkTopGVotes, {
 
 const PORT = process.env.PORT || 3000;
 
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
     console.log(`🚀 Server started successfully on port: ${PORT}`);
     
-    // 1. Send startup message
-    sendStartupMessage();
-    
-    // 2. Run initial check immediately
-    checkTopGVotes();
+    // Send startup message (will also fetch initial score)
+    await sendStartupMessage();
 });
+```eof
+
+---
+
+## 🚀 Setup Steps
+
+### Step 1: Update and Deploy Code
+
+1.  **Replace** the content of your `server.js` file with the code above.
+2.  **Commit and Push:** Push the changes to your GitHub repository (e.g., in Codespaces: `git commit -m "Implement TopG Webhook with Voter Name"`, then `git push`).
+3.  **Wait for Render:** Wait for Render to automatically deploy the new version of your service.
+
+### Step 2: Configure Render and UptimeRobot
+
+Ensure these foundational steps are correct to keep the service running 24/7 and to connect TopG:
+
+1.  **Render Configuration:** Ensure your **Build Command** is set to `npm install` and the **Start Command** is set to `node server.js`.
+2.  **Service Link:** Get your service URL from the Render Dashboard (e.g., `https://topg-discord-bot.onrender.com`).
+3.  **UptimeRobot:** The service must be monitored by UptimeRobot with the URL `https://topg-discord-bot.onrender.com` checked every 5 minutes to prevent idling.
+
+### Step 3: Configure TopG Postback (Crucial for Name)
+
+This is the most critical step to get the voter's name.
+
+1.  **Go to TopG Settings:** Navigate to the settings page for your server on TopG (where you saw the Postback URL field).
+2.  **Set Postback URL:** In the **Postback URL** field, enter the full Webhook address:
+    ```
+    https://topg-discord-bot.onrender.com/vote
+    ```
+3.  **Enable Username Field (TopG Specific):** You must ensure that TopG is configured to **ask the user for their name/ID** on the vote page. Without this, TopG has no name to send.
+4.  **Configure Custom Parameter (If needed):** Look for an area in TopG settings (near Postback URL) to add **custom parameters** or **variables**. You need to instruct TopG to send the name under a known variable name.
+    * **Field Name to send:** `username`
+    * **Value to use:** `[VOTER_NAME]` (or the specific variable TopG uses for the input name field).
+5.  **Save Changes:** Click **Submit** or **Save** on the TopG page.
+
+### Step 4: Test and Debug
+
+1.  **Vote:** Ask a player to vote, ensuring they enter a name (e.g., "TestingName").
+2.  **Check Render Logs:** Immediately check the **Logs** section in your Render dashboard.
+3.  **Look for this output:**
+    * You should see: `Request Body Data: {"username": "TestingName"}` (or something similar).
+    * If you see the name here, the process is successful!
+    * If you see: `Request Body Data: {}` or a blank object, TopG is not sending the name, and you must review the TopG settings for enabling custom variables/parameters. The bot will use "Unknown Member" in this case.
