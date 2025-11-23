@@ -1,6 +1,6 @@
 /**
  * Express Node.js application for TopG vote tracking using Webhooks.
- * Final Version: Includes Rank scraping and enhanced logging.
+ * Final Version: Includes Rank scraping, enhanced logging, and User-Agent bypass for 503 errors.
  */
 const express = require('express');
 const axios = require('axios');
@@ -20,8 +20,15 @@ const WEBHOOK_BASE_URL = "https://topg-discord-bot-xpg.onrender.com";
 const SERVER_OWNER_NAME = "XPG";
 
 // Variables to store stats
-let lastKnownTotalVotes = 35; 
+let lastKnownTotalVotes = 36; 
 let lastKnownRank = "N/A";
+
+// The bypass header to pretend we are a real browser (Essential for fixing 503 error)
+const AXIOS_CONFIG = {
+    headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+    }
+};
 
 // =========================================================
 //                   Helper Functions
@@ -39,7 +46,6 @@ async function sendStartupMessage() {
                 fields: [
                     { name: "Current Score", value: `${lastKnownTotalVotes}`, inline: true },
                     { name: "Current Rank", value: `${lastKnownRank}`, inline: true },
-                    // عرض رابط التصويت المباشر للاعبين
                     { name: "🔗 Vote Here", value: `[Click to Vote](${SERVER_LINK})`, inline: false }
                 ],
                 footer: { text: "System Powered by GlaD" },
@@ -82,15 +88,14 @@ function extractScore(html) {
 }
 
 function extractRank(html) {
-    // يبحث عن كلمة Rank ويأخذ الرقم أو النص الذي يليها
-    // النمط يبحث عن Rank متبوعة بمسافات ثم رقم أو نص (مثل #5 أو 5)
     const match = html.match(/Rank.*?(\d+|#[0-9]+)/s);
     return match ? match[1] : "N/A";
 }
 
 async function fetchInitialScoreAndRank() {
     try {
-        const { data } = await axios.get(SERVER_LINK);
+        // Using AXIOS_CONFIG to bypass 503
+        const { data } = await axios.get(SERVER_LINK, AXIOS_CONFIG); 
         const score = extractScore(data);
         const rank = extractRank(data);
         
@@ -99,7 +104,8 @@ async function fetchInitialScoreAndRank() {
         
         console.log(`📊 Initial Stats -> Score: ${lastKnownTotalVotes}, Rank: ${lastKnownRank}`);
     } catch (e) {
-        console.error("⚠️ Could not fetch initial stats.");
+        console.error("⚠️ Could not fetch initial stats (Check logs for 503).");
+        console.error("Error details:", e.message); 
     }
 }
 
@@ -119,8 +125,8 @@ app.post('/vote', async (req, res) => {
     const voterName = req.body.username || req.body.voter_name || req.body.player || req.body.p_resp || "Unknown Voter";
 
     try {
-        // 1. Fetch latest page data
-        const { data } = await axios.get(SERVER_LINK);
+        // 1. Fetch latest page data (Using AXIOS_CONFIG)
+        const { data } = await axios.get(SERVER_LINK, AXIOS_CONFIG); 
         const currentScore = extractScore(data);
         const currentRank = extractRank(data);
         
@@ -142,19 +148,4 @@ app.post('/vote', async (req, res) => {
             await sendVoteNotification(currentScore, currentRank, voterName); 
         }
         
-        res.status(200).send("OK");
-    } catch (error) {
-        console.error("❌ Error processing vote:", error.message);
-        res.status(500).send("Error");
-    }
-});
-
-// =========================================================
-//                         Start
-// =========================================================
-
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-    console.log(`🚀 Server running on port ${PORT}`);
-    sendStartupMessage();
-});
+        res
