@@ -21,7 +21,7 @@ const WEBHOOK_BASE_URL = "https://topg-discord-bot-xpg.onrender.com";
 
 const SERVER_OWNER_NAME = "XPG";
 
-let lastKnownTotalVotes = 0; 
+let lastKnownTotalVotes = 34; 
 
 // =========================================================
 //                   Discord Webhook Functions
