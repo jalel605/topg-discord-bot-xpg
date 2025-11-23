@@ -148,4 +148,19 @@ app.post('/vote', async (req, res) => {
             await sendVoteNotification(currentScore, currentRank, voterName); 
         }
         
-        res
+        res.status(200).send("OK");
+    } catch (error) {
+        console.error("❌ Error processing vote:", error.message);
+        res.status(500).send("Error");
+    }
+});
+
+// =========================================================
+//                         Start
+// =========================================================
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+    console.log(`🚀 Server running on port ${PORT}`);
+    sendStartupMessage();
+});
