@@ -19,6 +19,9 @@ const DISCORD_WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL;
 // TopG server link
 const SERVER_LINK = "https://topg.org/cs-servers/server-671797"; 
 
+// **الرابط الأساسي لخدمة Render - تأكد من مطابقة هذا الرابط لخدمتك**
+const WEBHOOK_BASE_URL = "https://topg-discord-bot-xpg.onrender.com"; 
+
 // Server owner name
 const SERVER_OWNER_NAME = "XPG";
 
@@ -44,7 +47,7 @@ async function sendStartupMessage() {
             embeds: [
                 {
                     title: "🟢 [XPG] Bot is Online & Ready!",
-                    description: "The TopG vote tracking system is now active. **Waiting for instant Webhook notifications.**",
+                    description: "The TopG vote tracking system is now active.",
                     color: 5763719, // Green
                     fields: [
                         {
@@ -53,9 +56,10 @@ async function sendStartupMessage() {
                             inline: true
                         },
                         {
-                            name: "🔗 Webhook Endpoint",
-                            value: "/vote",
-                            inline: true
+                            // يعرض الرابط الكامل الذي يجب وضعه في TopG
+                            name: "🔗 Webhook Endpoint (TopG Postback URL)",
+                            value: `${WEBHOOK_BASE_URL}/vote`,
+                            inline: false 
                         },
                         {
                             name: "📌 Reliability Note",
