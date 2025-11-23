@@ -16,10 +16,10 @@ app.use(express.urlencoded({ extended: true }));
 
 // Discord Webhook URL (must be set as an environment variable)
 const DISCORD_WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL;
-// TopG server link for scraping
+// TopG server link for scraping (Updated to 671797 as per your input)
 const SERVER_LINK = "https://topg.org/cs-servers/server-671797"; 
 
-// Server owner name used in the notification message
+// Server owner name used in the notification message (Updated to XPG)
 const SERVER_OWNER_NAME = "XPG";
 
 // Variable to store the last known vote count (Score)
@@ -40,10 +40,10 @@ async function sendStartupMessage() {
         await axios.post(DISCORD_WEBHOOK_URL, {
             embeds: [
                 {
-                    // Updated title with [FireZM]
+                    // Updated title with [XPG]
                     title: "🟢 [XPG] Bot is Online & Ready!",
                     description: "The TopG vote tracking system is now active. Checking for new votes every 5 minutes.",
-                    color: 5763719,
+                    color: 5763719, // Green color
                     fields: [
                         {
                             name: "🌍 Server Status",
@@ -82,13 +82,16 @@ async function sendNewVoteNotification(currentTotalVotes) {
         await axios.post(DISCORD_WEBHOOK_URL, {
             embeds: [
                 {
-                    title: `🌟 New Vote Received! (Score: ${currentTotalVotes})`,
-                    description: `**${SERVER_OWNER_NAME} thanks a dedicated supporter for voting on TopG!**`,
-                    color: 3447003, // Blue color
+                    title: `🌟 New Vote Received! (Score: ${currentTotalVotes}) 🗳️`,
+                    description: `${SERVER_OWNER_NAME} thanks a valued XPlayGaming member for voting on TopG! 🎉 ✨`, 
+                    color: 3447003,
                     fields: [
-                        { name: "Total Score", value: `${currentTotalVotes}`, inline: true },
-                        { name: "Vote Again", value: `[Link](${SERVER_LINK})`, inline: true }, 
+                        { name: "Total Score", value: `**${currentTotalVotes}**`, inline: true },
+                        { name: "Vote Again", value: `[Link](${SERVER_LINK})`, inline: true }
                     ],
+                    footer: {
+                        text: "Thanks from the XPlayZm Staff Team! 💖"
+                    },
                     timestamp: new Date().toISOString()
                 }
             ]
