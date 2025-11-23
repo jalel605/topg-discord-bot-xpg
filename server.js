@@ -1,6 +1,6 @@
 /**
- * Express Node.js application for TopG vote tracking using Webhooks.
- * Final Version: Auto-updates, GlaD footer, Webhook Link, and improved Score fetching.
+ * Express Node.js application for TopG vote tracking.
+ * File Name: server.js (Matched to your package.json configuration)
  */
 const express = require('express');
 const axios = require('axios');
@@ -12,43 +12,46 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // =========================================================
-//                  Configuration (إعدادات)
+//                  Configuration (الإعدادات)
 // =========================================================
 
 const DISCORD_WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL;
-// رابط السيرفر في TopG (يستخدم لجلب الرانك والأصوات)
 const SERVER_LINK = "https://topg.org/cs-servers/server-671797"; 
-// الرابط الأساسي للبوت الخاص بك (Render URL)
+// تأكد أن هذا الرابط هو رابط البوت الخاص بك على ريندر
 const WEBHOOK_BASE_URL = "https://topg-discord-bot-xpg.onrender.com"; 
 const SERVER_OWNER_NAME = "XPG";
 
-// Global Variables for Stats
-let lastKnownTotalVotes = 39; 
+// Global Variables
+let lastKnownTotalVotes = 0; 
 let lastKnownRank = "N/A";
 
-// Header to bypass basic bot protections (محاكاة متصفح حقيقي)
+// Header to behave like a real browser
 const AXIOS_CONFIG = {
     headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5'
     }
 };
 
 // =========================================================
-//                    Helper Functions
+//             Helper Functions (دوال الاستخراج)
 // =========================================================
 
 function extractScore(html) {
-    // استخراج عدد الأصوات حتى لو كان يحتوي على فواصل (مثلاً 1,234)
-    const match = html.match(/(?:Score|Votes|Points)[^0-9]*([\d,]+)/i);
+    // التحسين: تجاهل أي أكواد HTML أو مسافات بين كلمة Score والرقم
+    const match = html.match(/(?:Score|Votes|Points)(?:<[^>]+>|\s|&nbsp;)*([\d,]+)/i);
+    
     if (match && match[1]) {
+        // إزالة الفواصل وتحويل النص لرقم
         return parseInt(match[1].replace(/,/g, ''), 10);
     }
     return 0;
 }
 
 function extractRank(html) {
-    // استخراج الترتيب (Rank)
-    const match = html.match(/Rank.*?(\d+|#[0-9]+)/s);
+    // استخراج الرانك بشكل دقيق
+    const match = html.match(/Rank(?:<[^>]+>|\s|&nbsp;)*(?:#)?([\d,]+)/i);
     return match ? match[1] : "N/A";
 }
 
@@ -60,14 +63,15 @@ async function fetchScoreAndRank() {
         const score = extractScore(data);
         const rank = extractRank(data);
         
-        // تحديث المتغيرات العامة فوراً
+        // تحديث المتغيرات العامة
         if (score !== 0) lastKnownTotalVotes = score;
         if (rank !== "N/A") lastKnownRank = rank;
 
-        console.log(`📊 Current Stats Updated -> Score: ${lastKnownTotalVotes}, Rank: ${lastKnownRank}`);
+        console.log(`📊 Updated Stats -> Score: ${lastKnownTotalVotes}, Rank: ${lastKnownRank}`);
         return { score: lastKnownTotalVotes, rank: lastKnownRank };
     } catch (e) {
-        console.error("⚠️ Failed to fetch current stats.");
+        console.error("⚠️ Failed to fetch stats. Using last known values.");
+        console.error(e.message);
         return { score: lastKnownTotalVotes, rank: lastKnownRank };
     }
 }
@@ -83,7 +87,7 @@ async function sendStatusUpdateMessage(score, rank) {
                 fields: [
                     { name: "🏆 Current Rank", value: `**${rank}**`, inline: true },
                     { name: "🗳️ Total Votes", value: `**${score}**`, inline: true },
-                    { name: "🔗 Vote Link", value: `[Click Here to Vote](${SERVER_LINK})`, inline: false }
+                    { name: "🔗 Vote Here", value: `${SERVER_LINK}`, inline: false }
                 ],
                 footer: { text: "System Powered by GlaD" },
                 timestamp: new Date().toISOString()
@@ -119,26 +123,26 @@ async function sendVoteNotification(currentTotalVotes, currentRank, voterName) {
 }
 
 async function sendStartupMessage() {
-    // جلب البيانات الحقيقية عند التشغيل
+    // جلب البيانات الأولية
     await fetchScoreAndRank();
     
     if (!DISCORD_WEBHOOK_URL) return;
     try {
         await axios.post(DISCORD_WEBHOOK_URL, {
             embeds: [{
-                title: "🟢 [XPG] Bot is Online & Ready!",
+                title: "🟢 [XPG] Bot is Online!",
                 description: "Listening for TopG. Auto-updates scheduled.",
                 color: 5763719, // Green
                 fields: [
                     { name: "Starting Score", value: `${lastKnownTotalVotes}`, inline: true },
                     { name: "Starting Rank", value: `${lastKnownRank}`, inline: true },
-                    { name: "🔗 Webhook Endpoint", value: `${WEBHOOK_BASE_URL}/vote`, inline: false }
+                    { name: "🔗 Vote Here", value: `${SERVER_LINK}`, inline: false }
                 ],
                 footer: { text: "System Powered by GlaD" },
                 timestamp: new Date().toISOString()
             }]
         });
-        console.log("✅ Startup message sent with GlaD footer.");
+        console.log("✅ Startup message sent.");
     } catch (error) {
         console.error("❌ Error sending startup message:", error.message);
     }
@@ -176,12 +180,13 @@ app.post('/vote', async (req, res) => {
     const voterName = req.body.username || req.body.voter_name || req.body.p_resp || "Unknown Voter";
 
     try {
-        // تحديث البيانات فور وصول التصويت
         const { score: currentScore, rank: currentRank } = await fetchScoreAndRank();
         
         let displayScore = currentScore;
+        
+        // معالجة تأخر تحديث الموقع (اختياري)
         if (currentScore <= lastKnownTotalVotes) {
-            console.log("⚠️ Site lag detected (Score same or lower).");
+            console.log("⚠️ Site lag detected.");
         }
 
         await sendVoteNotification(displayScore, currentRank, voterName);
