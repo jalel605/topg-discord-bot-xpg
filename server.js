@@ -1,6 +1,6 @@
 /**
  * Express Node.js application for TopG vote tracking.
- * File Name: server.js (Matched to your package.json configuration)
+ * FINAL FIX: Ultra-strict Regex for Rank/Score + Updated field label to "Click Here to Vote".
  */
 const express = require('express');
 const axios = require('axios');
@@ -25,7 +25,7 @@ const SERVER_OWNER_NAME = "XPG";
 let lastKnownTotalVotes = 0; 
 let lastKnownRank = "N/A";
 
-// Header to behave like a real browser
+// Header to behave like a real browser (تجنب الحظر)
 const AXIOS_CONFIG = {
     headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
@@ -35,23 +35,30 @@ const AXIOS_CONFIG = {
 };
 
 // =========================================================
-//             Helper Functions (دوال الاستخراج)
+//             Helper Functions (دوال الاستخراج المعدلة)
 // =========================================================
 
 function extractScore(html) {
     // التحسين: تجاهل أي أكواد HTML أو مسافات بين كلمة Score والرقم
     const match = html.match(/(?:Score|Votes|Points)(?:<[^>]+>|\s|&nbsp;)*([\d,]+)/i);
-    
     if (match && match[1]) {
-        // إزالة الفواصل وتحويل النص لرقم
         return parseInt(match[1].replace(/,/g, ''), 10);
     }
     return 0;
 }
 
 function extractRank(html) {
-    // استخراج الرانك بشكل دقيق
-    const match = html.match(/Rank(?:<[^>]+>|\s|&nbsp;)*(?:#)?([\d,]+)/i);
+    // FIX: البحث عن كلمة Rank التي تكون محصورة بين أقواس التاغ (>Rank<)
+    // هذا يضمن أننا نأخذ الرانك من الجدول الجانبي وليس من نص كتابي في الوصف
+    // Regex explanation: Look for ">Rank<" (label), then skip tags/spaces until the number.
+    const match = html.match(/>\s*Rank\s*<\s*\/?[^>]+>(?:[^0-9]*?)([\d,]+)/i);
+    
+    // إذا لم تنجح الطريقة الدقيقة، نستخدم الطريقة القديمة كاحتياط
+    if (!match) {
+         const fallback = html.match(/Rank(?:<[^>]+>|\s|&nbsp;)*(?:#)?([\d,]+)/i);
+         return fallback ? fallback[1] : "N/A";
+    }
+    
     return match ? match[1] : "N/A";
 }
 
@@ -87,7 +94,8 @@ async function sendStatusUpdateMessage(score, rank) {
                 fields: [
                     { name: "🏆 Current Rank", value: `**${rank}**`, inline: true },
                     { name: "🗳️ Total Votes", value: `**${score}**`, inline: true },
-                    { name: "🔗 Vote Here", value: `${SERVER_LINK}`, inline: false }
+                    // تغيير التسمية إلى "Click Here to Vote"
+                    { name: "🔗 Vote Link", value: `[Click Here to Vote](${SERVER_LINK})`, inline: false }
                 ],
                 footer: { text: "System Powered by GlaD" },
                 timestamp: new Date().toISOString()
@@ -110,7 +118,8 @@ async function sendVoteNotification(currentTotalVotes, currentRank, voterName) {
                 fields: [
                     { name: "📈 New Total Votes", value: `**${currentTotalVotes}**`, inline: true },
                     { name: "🏅 Current Rank", value: `**${currentRank}**`, inline: true },
-                    { name: "🗳️ Vote Again", value: `[Link](${SERVER_LINK})`, inline: true }
+                    // تغيير التسمية إلى "Click Here to Vote" في إشعار التصويت
+                    { name: "🗳️ Vote Again", value: `[Click Here to Vote](${SERVER_LINK})`, inline: true }
                 ],
                 footer: { text: "XPlayZm Staff Team" },
                 timestamp: new Date().toISOString()
@@ -131,12 +140,13 @@ async function sendStartupMessage() {
         await axios.post(DISCORD_WEBHOOK_URL, {
             embeds: [{
                 title: "🟢 [XPG] Bot is Online!",
-                description: "Listening for TopG. Auto-updates scheduled.",
+                description: "Listening for TopG Webhooks. Auto-updates scheduled.",
                 color: 5763719, // Green
                 fields: [
                     { name: "Starting Score", value: `${lastKnownTotalVotes}`, inline: true },
                     { name: "Starting Rank", value: `${lastKnownRank}`, inline: true },
-                    { name: "🔗 Vote Here", value: `${SERVER_LINK}`, inline: false }
+                    // إبقاء رابط الويب هوك في رسالة البداية
+                    { name: "🔗 Vote Link", value: `[Click Here to Vote](${SERVER_LINK})`, inline: false }
                 ],
                 footer: { text: "System Powered by GlaD" },
                 timestamp: new Date().toISOString()
@@ -184,7 +194,6 @@ app.post('/vote', async (req, res) => {
         
         let displayScore = currentScore;
         
-        // معالجة تأخر تحديث الموقع (اختياري)
         if (currentScore <= lastKnownTotalVotes) {
             console.log("⚠️ Site lag detected.");
         }
