@@ -1,0 +1,14 @@
+{
+  "name": "topg-polling-bot",
+  "version": "1.0.0",
+  "description": "A Node.js bot to track TopG votes using polling/scraping and send Discord notifications.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "axios": "^1.7.2",
+    "node-cron": "^3.0.3"
+  }
+}
